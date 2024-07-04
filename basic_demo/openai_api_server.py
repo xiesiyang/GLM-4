@@ -649,6 +649,9 @@ def parse_args():
                         type=int,
                         default=MAX_MODEL_LENGTH,
                         help=f'Model context length. If unspecified, will be {MAX_MODEL_LENGTH} ')
+    parser.add_argument('--trust-remote-code',
+                        action='store_true',
+                        help='Trust remote code from huggingface.')
     return parser.parse_args()
 
 
@@ -656,7 +659,7 @@ if __name__ == "__main__":
     args = parse_args()
     print(args)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=args.trust_remote_code)
     engine_args = AsyncEngineArgs(
         model=args.model,
         tokenizer=args.model,
