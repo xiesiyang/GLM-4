@@ -16,11 +16,11 @@ from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from transformers import AutoTokenizer, LogitsProcessor
 from sse_starlette.sse import EventSourceResponse
+import argparse
 
 EventSourceResponse.DEFAULT_PING_INTERVAL = 1000
 import os
 
-MODEL_PATH = os.environ.get('MODEL_PATH', 'THUDM/glm-4-9b-chat')
 MAX_MODEL_LENGTH = 8192
 
 
@@ -241,7 +241,6 @@ async def generate_stream_glm4(params):
 def process_messages(messages, tools=None, tool_choice="none"):
     _messages = messages
     processed_messages = []
-    msg_has_sys = False
 
     def filter_tools(tool_choice, tools):
         function_name = tool_choice.get('function', {}).get('name', None)
@@ -264,7 +263,6 @@ def process_messages(messages, tools=None, tool_choice="none"):
                     "tools": tools
                 }
             )
-            msg_has_sys = True
 
     if isinstance(tool_choice, dict) and tools:
         processed_messages.append(
@@ -318,9 +316,6 @@ def process_messages(messages, tools=None, tool_choice="none"):
                         }
                     )
         else:
-            if role == "system" and msg_has_sys:
-                msg_has_sys = False
-                continue
             processed_messages.append({"role": role, "content": content})
 
     if not tools or tool_choice == "none":
@@ -614,22 +609,68 @@ async def parse_output_text(model_id: str, value: str, function_call: ChoiceDelt
     yield '[DONE]'
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="glm-4-9b-chat vllm")
+    parser.add_argument(
+        '--model',
+        type=str,
+        default='facebook/opt-125m',
+        help='Name or path of the huggingface model to use.')
+    parser.add_argument(
+        "--served-model-name",
+        nargs="+",
+        type=str,
+        default=None,
+        help="The model name(s) used in the API. If multiple "
+             "names are provided, the server will respond to any "
+             "of the provided names. The model name in the model "
+             "field of a response will be the first name in this "
+             "list. If not specified, the model name will be the "
+             "same as the `--model` argument. Noted that this name(s)"
+             "will also be used in `model_name` tag content of "
+             "prometheus metrics, if multiple names provided, metrics"
+             "tag will take the first one.")
+
+    parser.add_argument('--tensor-parallel-size',
+                        '-tp',
+                        type=int,
+                        default=1,
+                        help='Number of tensor parallel replicas.')
+    parser.add_argument(
+        '--gpu-memory-utilization',
+        type=float,
+        default=0.9,
+        help='The fraction of GPU memory to be used for the model '
+             'executor, which can range from 0 to 1. For example, a value of '
+             '0.5 would imply 50%% GPU memory utilization. If unspecified, '
+             'will use the default value of 0.9.')
+
+    parser.add_argument('--max-model-len',
+                        type=int,
+                        default=MAX_MODEL_LENGTH,
+                        help=f'Model context length. If unspecified, will be {MAX_MODEL_LENGTH} ')
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
+    args = parse_args()
+    print(args)
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     engine_args = AsyncEngineArgs(
-        model=MODEL_PATH,
-        tokenizer=MODEL_PATH,
+        model=args.model,
+        tokenizer=args.model,
         # 如果你有多张显卡，可以在这里设置成你的显卡数量
-        tensor_parallel_size=1,
+        tensor_parallel_size=args.tensor_parallel_size,
         dtype="bfloat16",
         trust_remote_code=True,
         # 占用显存的比例，请根据你的显卡显存大小设置合适的值，例如，如果你的显卡有80G，您只想使用24G，请按照24/80=0.3设置
-        gpu_memory_utilization=0.9,
+        gpu_memory_utilization=args.gpu_memory_utilization,
         enforce_eager=True,
         worker_use_ray=False,
         engine_use_ray=False,
         disable_log_requests=True,
-        max_model_len=MAX_MODEL_LENGTH,
+        max_model_len=args.max_model_len,
     )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     uvicorn.run(app, host='0.0.0.0', port=8000, workers=1)
