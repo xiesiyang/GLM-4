@@ -672,7 +672,7 @@ if __name__ == "__main__":
         enforce_eager=True,
         worker_use_ray=False,
         engine_use_ray=False,
-        disable_log_requests=True,
+        disable_log_requests=False,
         max_model_len=args.max_model_len,
     )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
