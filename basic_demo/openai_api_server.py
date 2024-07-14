@@ -318,11 +318,6 @@ def process_messages(messages, tools=None, tool_choice="none"):
         else:
             processed_messages.append({"role": role, "content": content})
 
-    if not tools or tool_choice == "none":
-        for m in _messages:
-            if m.role == 'system':
-                processed_messages.insert(0, {"role": m.role, "content": m.content})
-                break
     return processed_messages
 
 
